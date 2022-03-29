@@ -22,3 +22,15 @@ serde= { version = "1.0.136", features = ["derive"]}
 
 [dev-dependencies]
 reqwest = "0.11.10"
+
+[dependencies.sqlx]
+version = "0.5.7"
+default-features = false
+features = [
+"runtime-actix-rustls", 
+"macros", 
+"postgres", 
+"uuid", 
+"chrono", 
+"migrate"
+]
