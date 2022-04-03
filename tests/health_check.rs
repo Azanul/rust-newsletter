@@ -1,5 +1,6 @@
-use rust_newsletter::configuration::get_configuration;
-use sqlx::PgPool;
+use rust_newsletter::configuration::{get_configuration, DatabaseSettings};
+use sqlx::{Connection, Executor, PgConnection, PgPool};
+use uuid::Uuid;
 
 pub struct TestApp {
     pub address: String,
@@ -84,17 +85,34 @@ async fn subscribe_returns_a_400_for_missing_form_data() {
     }
 }
 
-use std::net::TcpListener;
-async fn spawn_app() -> TestApp {
-    let configuration = get_configuration().expect("Failed to read configuration");
+pub async fn configure_database(config: &DatabaseSettings) -> PgPool {
+    let mut connection = PgConnection::connect(&config.connection_string_without_db())
+        .await
+        .expect("Failed to connect to Postgres");
+    connection
+        .execute(format!(r#"CREATE DATABASE "{}";"#, config.database_name).as_str())
+        .await
+        .expect("Failed to create database.");
 
-    let connection_string = configuration.database.connection_string();
-
-    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
-
-    let connection_pool = PgPool::connect(&connection_string)
+    let connection_pool = PgPool::connect(&config.connection_string())
         .await
         .expect("Failed to connect to Postgres.");
+
+    sqlx::migrate!("./migrations")
+        .run(&connection_pool)
+        .await
+        .expect("Failed to migrate the database");
+
+    connection_pool
+}
+
+use std::net::TcpListener;
+async fn spawn_app() -> TestApp {
+    let listener = TcpListener::bind("127.0.0.1:0").expect("Failed to bind random port");
+
+    let mut configuration = get_configuration().expect("Failed to read configuration.");
+    configuration.database.database_name = Uuid::new_v4().to_string();
+    let connection_pool = configure_database(&configuration.database).await;
 
     let port = listener.local_addr().unwrap().port();
 
